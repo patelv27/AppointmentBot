@@ -15,4 +15,6 @@ TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 NGROK_AUTH_TOKEN=
 
+Use self hosted python setup (Redis plus uvicorn) instructions
+
 

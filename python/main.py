@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from fastapi import FastAPI
 from vocode.streaming.models.telephony import TwilioConfig
 from pyngrok import ngrok
@@ -15,7 +16,8 @@ from vocode.streaming.telephony.server.base import (
     TelephonyServer,
 )
 from custom_event_manager import CustomEventsManager
-import sys
+from custom_agent import CustomAgentFactory
+from custom_agent import CustomAgentConfig
 
 # if running from python, this will load the local .env
 # docker-compose will load the .env file by itself
@@ -49,8 +51,6 @@ if not BASE_URL:
     BASE_URL = ngrok.connect(port).public_url.replace("https://", "")
     logger.info('ngrok tunnel "{}" -> "http://127.0.0.1:{}"'.format(BASE_URL, port))
 
-# if not BASE_URL:
-#     raise ValueError("BASE_URL must be set in environment if not using pyngrok")
 
 
 #Setup info for server
@@ -61,11 +61,12 @@ telephony_server = TelephonyServer(
     inbound_call_configs=[
         TwilioInboundCallConfig(
             url="/inbound_call",
-            agent_config=LLMAgentConfig(
-                initial_message=BaseMessage(text="Hello! I am an AI assistant meant to help schedule your appointment. To start, I'll need your name and date of birth.  "),
-                prompt_preamble= "You are an AI assistant for a healthcare provider. You are talking to a patient. After the patient confirms their name and date of birth, ask 'What is your insurance payer name?'. After they respond, repeat their payer name back to the patient and ask 'is this correct?' to confirm. Then ask 'What is your insurance payer ID'? After they respond, repeat their payer ID back to the patient and ask 'is this correct?' to confirm. Then ask 'What is your medical complaint?'. After they respond, repeat their complaint back to the patient and ask 'is this correct?' to confirm. Then ask 'What is your address?'. After they respond, repeat their address back to the patient and ask 'is this correct?' to confirm. Then ask 'What is your phone number?. After they respond, repeat their phone number back to the patient and ask 'is this correct?' to confirm. After the patient confirms thier phone number, ask if and whom they have a referral for.  After the patient confirms their referral status, ask the patient 'Please select between an appointment with Doctor Strange at 3pm on August 1st or an appointment with Doctor House at 1pm on August 2nd'. After confirming this selection, the final message should be in the form of 'You are confirmed for an appointment with' followed by thier doctor, date, and time selection. Once this is done, prompt the caller to say 'goodbye' to end the call.",
-                temperature=.2,
+            agent_config=CustomAgentConfig(
+                initial_message=BaseMessage(text="Hello! I am an AI assistant meant to help schedule your appointment. To start, say your name.  "),
+                prompt_preamble = "You are an AI assistant for a healthcare provider. You are talking to a patient. You are meant to collect a info about a patient. Once the patient confirms, say 'Ok, your' type of info 'is confirmed'. You will ask for what the human says ask for. Do not ask about referral status until the human brings it up. When the human confirms whether they have a referral, say 'Your referral status is confirmed'. After all the info is collected, repeat their appointment confirmation by saying the exact phrase 'You are confirmed for an appointment' with the doctor and time slot they chose. Finally, prompt the user to say goodbye.",
+                temperature=.1,
                 end_conversation_on_goodbye=True,
+                generate_response=True,
                 model_name='text-davinci-003'),
             twilio_config=TwilioConfig(
                 account_sid=os.environ['TWILIO_ACCOUNT_SID'],
@@ -77,7 +78,9 @@ telephony_server = TelephonyServer(
     ),
         )
     ],
+    agent_factory=CustomAgentFactory(),
     logger=logger,
+    
 )
 
 app.include_router(telephony_server.get_router())
